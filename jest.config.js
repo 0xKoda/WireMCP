@@ -23,4 +23,4 @@ module.exports = {
   maxWorkers: 4,
   clearMocks: true,
   restoreMocks: true
-}; 
+};
