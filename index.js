@@ -55,12 +55,12 @@ server.tool(
   async (args) => {
     try {
       const tsharkPath = await findTshark();
-      const { interface, duration } = args;
+      const { interface: networkInterface = 'en0', duration = 5 } = args;
       const tempPcap = 'temp_capture.pcap';
-      console.error(`Capturing packets on ${interface} for ${duration}s`);
+      console.error(`Capturing packets on ${networkInterface} for ${duration}s`);
 
       await execAsync(
-        `${tsharkPath} -i ${interface} -w ${tempPcap} -a duration:${duration}`,
+        `${tsharkPath} -i ${networkInterface} -w ${tempPcap} -a duration:${duration}`,
         { env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` } }
       );
 
@@ -107,12 +107,12 @@ server.tool(
   async (args) => {
     try {
       const tsharkPath = await findTshark();
-      const { interface, duration } = args;
+      const { interface: networkInterface = 'en0', duration = 5 } = args;
       const tempPcap = 'temp_capture.pcap';
-      console.error(`Capturing summary stats on ${interface} for ${duration}s`);
+      console.error(`Capturing summary stats on ${networkInterface} for ${duration}s`);
 
       await execAsync(
-        `${tsharkPath} -i ${interface} -w ${tempPcap} -a duration:${duration}`,
+        `${tsharkPath} -i ${networkInterface} -w ${tempPcap} -a duration:${duration}`,
         { env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` } }
       );
 
@@ -148,12 +148,12 @@ server.tool(
   async (args) => {
     try {
       const tsharkPath = await findTshark();
-      const { interface, duration } = args;
+      const { interface: networkInterface = 'en0', duration = 5 } = args;
       const tempPcap = 'temp_capture.pcap';
-      console.error(`Capturing conversations on ${interface} for ${duration}s`);
+      console.error(`Capturing conversations on ${networkInterface} for ${duration}s`);
 
       await execAsync(
-        `${tsharkPath} -i ${interface} -w ${tempPcap} -a duration:${duration}`,
+        `${tsharkPath} -i ${networkInterface} -w ${tempPcap} -a duration:${duration}`,
         { env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` } }
       );
 
@@ -189,12 +189,12 @@ server.tool(
   async (args) => {
     try {
       const tsharkPath = await findTshark();
-      const { interface, duration } = args;
+      const { interface: networkInterface = 'en0', duration = 5 } = args;
       const tempPcap = 'temp_capture.pcap';
-      console.error(`Capturing traffic on ${interface} for ${duration}s to check threats`);
+      console.error(`Capturing traffic on ${networkInterface} for ${duration}s to check threats`);
 
       await execAsync(
-        `${tsharkPath} -i ${interface} -w ${tempPcap} -a duration:${duration}`,
+        `${tsharkPath} -i ${networkInterface} -w ${tempPcap} -a duration:${duration}`,
         { env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` } }
       );
 
@@ -515,12 +515,12 @@ server.prompt(
     interface: z.string().optional().describe('Network interface to capture from'),
     duration: z.number().optional().describe('Duration in seconds to capture'),
   },
-  ({ interface = 'en0', duration = 5 }) => ({
+  ({ interface: networkInterface = 'en0', duration = 5 }) => ({
     messages: [{
       role: 'user',
       content: {
         type: 'text',
-        text: `Please analyze the network traffic on interface ${interface} for ${duration} seconds and provide insights about:
+        text: `Please analyze the network traffic on interface ${networkInterface} for ${duration} seconds and provide insights about:
 1. The types of traffic observed
 2. Any notable patterns or anomalies
 3. Key IP addresses and ports involved
@@ -536,12 +536,12 @@ server.prompt(
     interface: z.string().optional().describe('Network interface to capture from'),
     duration: z.number().optional().describe('Duration in seconds to capture'),
   },
-  ({ interface = 'en0', duration = 5 }) => ({
+  ({ interface: networkInterface = 'en0', duration = 5 }) => ({
     messages: [{
       role: 'user',
       content: {
         type: 'text',
-        text: `Please provide a summary of network traffic statistics from interface ${interface} over ${duration} seconds, focusing on:
+        text: `Please provide a summary of network traffic statistics from interface ${networkInterface} over ${duration} seconds, focusing on:
 1. Protocol distribution
 2. Traffic volume by protocol
 3. Notable patterns in protocol usage
@@ -557,12 +557,12 @@ server.prompt(
     interface: z.string().optional().describe('Network interface to capture from'),
     duration: z.number().optional().describe('Duration in seconds to capture'),
   },
-  ({ interface = 'en0', duration = 5 }) => ({
+  ({ interface: networkInterface = 'en0', duration = 5 }) => ({
     messages: [{
       role: 'user',
       content: {
         type: 'text',
-        text: `Please analyze network conversations on interface ${interface} for ${duration} seconds and identify:
+        text: `Please analyze network conversations on interface ${networkInterface} for ${duration} seconds and identify:
 1. Most active IP pairs
 2. Conversation durations and data volumes
 3. Unusual communication patterns
@@ -578,12 +578,12 @@ server.prompt(
     interface: z.string().optional().describe('Network interface to capture from'),
     duration: z.number().optional().describe('Duration in seconds to capture'),
   },
-  ({ interface = 'en0', duration = 5 }) => ({
+  ({ interface: networkInterface = 'en0', duration = 5 }) => ({
     messages: [{
       role: 'user',
       content: {
         type: 'text',
-        text: `Please analyze traffic on interface ${interface} for ${duration} seconds and check for security threats:
+        text: `Please analyze traffic on interface ${networkInterface} for ${duration} seconds and check for security threats:
 1. Compare captured IPs against URLhaus blacklist
 2. Identify potential malicious activity
 3. Highlight any concerning patterns
