@@ -4,7 +4,9 @@
   "description": "An MCP for network sleuthing",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
   },
   "author": "0xKoda",
   "license": "MIT",
@@ -15,5 +17,9 @@
     "util": "^0.12.5",
     "which": "^5.0.0",
     "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "@types/jest": "^29.5.8"
   }
 }
