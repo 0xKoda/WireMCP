@@ -51,27 +51,67 @@ server.tool(
   {
     interface: z.string().optional().default('en0').describe('Network interface to capture from (e.g., eth0, en0)'),
     duration: z.number().optional().default(5).describe('Capture duration in seconds'),
+    filter: z.string().optional().default('tcp port 80 or tcp port 443 or udp port 443').describe('Capture filter in libpcap syntax (default: HTTP/HTTPS/HTTP3 traffic)'),
   },
   async (args) => {
     try {
       const tsharkPath = await findTshark();
-      const { interface, duration } = args;
-      const tempPcap = 'temp_capture.pcap';
-      console.error(`Capturing packets on ${interface} for ${duration}s`);
+      const { interface, duration, filter } = args;
+      const tempPcap = path.join(os.tmpdir(), `wiremcp_capture_${Date.now()}.pcap`);
+      console.error(`Capturing packets on ${interface} for ${duration}s with filter: ${filter}`);
 
+      // Capture with packet count limit to prevent excessive data
+      const maxPackets = Math.min(1000, duration * 100); // Limit based on duration
       await execAsync(
-        `${tsharkPath} -i ${interface} -w ${tempPcap} -a duration:${duration}`,
-        { env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` } }
+        `${tsharkPath} -i ${interface} -w ${tempPcap} -a duration:${duration} -c ${maxPackets} -f "${filter}"`,
+        {
+          env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` },
+          maxBuffer: 50 * 1024 * 1024 // 50MB buffer
+        }
       );
 
-      const { stdout, stderr } = await execAsync(
-        `${tsharkPath} -r "${tempPcap}" -T json -e frame.number -e ip.src -e ip.dst -e tcp.srcport -e tcp.dstport -e tcp.flags -e frame.time -e http.request.method -e http.response.code`,
-        { env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` } }
-      );
+      // Read with limited output and better error handling
+      let stdout, stderr;
+      try {
+        const result = await execAsync(
+          `${tsharkPath} -r "${tempPcap}" -T json -c 500 -e frame.number -e ip.src -e ip.dst -e tcp.srcport -e tcp.dstport -e udp.srcport -e udp.dstport -e tcp.flags -e frame.time -e http.request.method -e http.response.code -e quic.version`,
+          {
+            env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` },
+            maxBuffer: 20 * 1024 * 1024 // 20MB buffer for JSON output
+          }
+        );
+        stdout = result.stdout;
+        stderr = result.stderr;
+      } catch (error) {
+        if (error.code === 'ENOBUFS' || error.message.includes('maxBuffer')) {
+          console.error('Output too large, falling back to summary');
+          return {
+            content: [{
+              type: 'text',
+              text: `Capture completed but output too large for detailed analysis. Captured ${maxPackets} packets over ${duration}s on ${interface}.\nUse get_summary_stats or get_conversations for manageable output with large captures.`,
+            }],
+          };
+        }
+        throw error;
+      }
+
       if (stderr) console.error(`tshark stderr: ${stderr}`);
-      let packets = JSON.parse(stdout);
 
-      const maxChars = 720000;
+      let packets;
+      try {
+        packets = JSON.parse(stdout);
+      } catch (parseError) {
+        console.error(`JSON parse failed: ${parseError.message}`);
+        return {
+          content: [{
+            type: 'text',
+            text: `Capture completed but JSON parsing failed due to large output. Captured data over ${duration}s on ${interface}.\nTry using get_summary_stats or reducing duration/adding more specific filters.`,
+          }],
+        };
+      }
+
+      // Additional trimming if still too large
+      const maxChars = 500000; // Reduced from 720000
       let jsonString = JSON.stringify(packets);
       if (jsonString.length > maxChars) {
         const trimFactor = maxChars / jsonString.length;
@@ -86,7 +126,7 @@ server.tool(
       return {
         content: [{
           type: 'text',
-          text: `Captured packet data (JSON for LLM analysis):\n${jsonString}`,
+          text: `Captured packet data (JSON for LLM analysis):\nFilter: ${filter}\nPackets captured: ${packets.length}\n\n${jsonString}`,
         }],
       };
     } catch (error) {
@@ -103,22 +143,29 @@ server.tool(
   {
     interface: z.string().optional().default('en0').describe('Network interface to capture from (e.g., eth0, en0)'),
     duration: z.number().optional().default(5).describe('Capture duration in seconds'),
+    filter: z.string().optional().default('tcp port 80 or tcp port 443 or udp port 443').describe('Capture filter in libpcap syntax (default: HTTP/HTTPS/HTTP3 traffic)'),
   },
   async (args) => {
     try {
       const tsharkPath = await findTshark();
-      const { interface, duration } = args;
-      const tempPcap = 'temp_capture.pcap';
-      console.error(`Capturing summary stats on ${interface} for ${duration}s`);
+      const { interface, duration, filter } = args;
+      const tempPcap = path.join(os.tmpdir(), `wiremcp_summary_${Date.now()}.pcap`);
+      console.error(`Capturing summary stats on ${interface} for ${duration}s with filter: ${filter}`);
 
       await execAsync(
-        `${tsharkPath} -i ${interface} -w ${tempPcap} -a duration:${duration}`,
-        { env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` } }
+        `${tsharkPath} -i ${interface} -w ${tempPcap} -a duration:${duration} -f "${filter}"`,
+        {
+          env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` },
+          maxBuffer: 10 * 1024 * 1024 // 10MB buffer
+        }
       );
 
       const { stdout, stderr } = await execAsync(
         `${tsharkPath} -r "${tempPcap}" -qz io,phs`,
-        { env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` } }
+        {
+          env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` },
+          maxBuffer: 5 * 1024 * 1024 // 5MB buffer
+        }
       );
       if (stderr) console.error(`tshark stderr: ${stderr}`);
 
@@ -127,7 +174,7 @@ server.tool(
       return {
         content: [{
           type: 'text',
-          text: `Protocol hierarchy statistics for LLM analysis:\n${stdout}`,
+          text: `Protocol hierarchy statistics for LLM analysis:\nFilter: ${filter}\nDuration: ${duration}s\n\n${stdout}`,
         }],
       };
     } catch (error) {
@@ -144,22 +191,29 @@ server.tool(
   {
     interface: z.string().optional().default('en0').describe('Network interface to capture from (e.g., eth0, en0)'),
     duration: z.number().optional().default(5).describe('Capture duration in seconds'),
+    filter: z.string().optional().default('tcp port 80 or tcp port 443 or udp port 443').describe('Capture filter in libpcap syntax (default: HTTP/HTTPS/HTTP3 traffic)'),
   },
   async (args) => {
     try {
       const tsharkPath = await findTshark();
-      const { interface, duration } = args;
-      const tempPcap = 'temp_capture.pcap';
-      console.error(`Capturing conversations on ${interface} for ${duration}s`);
+      const { interface, duration, filter } = args;
+      const tempPcap = path.join(os.tmpdir(), `wiremcp_conversations_${Date.now()}.pcap`);
+      console.error(`Capturing conversations on ${interface} for ${duration}s with filter: ${filter}`);
 
       await execAsync(
-        `${tsharkPath} -i ${interface} -w ${tempPcap} -a duration:${duration}`,
-        { env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` } }
+        `${tsharkPath} -i ${interface} -w ${tempPcap} -a duration:${duration} -f "${filter}"`,
+        {
+          env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` },
+          maxBuffer: 10 * 1024 * 1024 // 10MB buffer
+        }
       );
 
       const { stdout, stderr } = await execAsync(
-        `${tsharkPath} -r "${tempPcap}" -qz conv,tcp`,
-        { env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` } }
+        `${tsharkPath} -r "${tempPcap}" -qz conv,tcp -qz conv,udp`,
+        {
+          env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` },
+          maxBuffer: 5 * 1024 * 1024 // 5MB buffer
+        }
       );
       if (stderr) console.error(`tshark stderr: ${stderr}`);
 
@@ -168,7 +222,7 @@ server.tool(
       return {
         content: [{
           type: 'text',
-          text: `TCP/UDP conversation statistics for LLM analysis:\n${stdout}`,
+          text: `TCP/UDP conversation statistics for LLM analysis:\nFilter: ${filter}\nDuration: ${duration}s\n\n${stdout}`,
         }],
       };
     } catch (error) {
@@ -185,25 +239,32 @@ server.tool(
   {
     interface: z.string().optional().default('en0').describe('Network interface to capture from (e.g., eth0, en0)'),
     duration: z.number().optional().default(5).describe('Capture duration in seconds'),
+    filter: z.string().optional().default('tcp port 80 or tcp port 443 or udp port 443').describe('Capture filter in libpcap syntax (default: HTTP/HTTPS/HTTP3 traffic)'),
   },
   async (args) => {
     try {
       const tsharkPath = await findTshark();
-      const { interface, duration } = args;
-      const tempPcap = 'temp_capture.pcap';
-      console.error(`Capturing traffic on ${interface} for ${duration}s to check threats`);
+      const { interface, duration, filter } = args;
+      const tempPcap = path.join(os.tmpdir(), `wiremcp_threats_${Date.now()}.pcap`);
+      console.error(`Capturing traffic on ${interface} for ${duration}s to check threats with filter: ${filter}`);
 
       await execAsync(
-        `${tsharkPath} -i ${interface} -w ${tempPcap} -a duration:${duration}`,
-        { env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` } }
+        `${tsharkPath} -i ${interface} -w ${tempPcap} -a duration:${duration} -f "${filter}"`,
+        {
+          env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` },
+          maxBuffer: 10 * 1024 * 1024 // 10MB buffer
+        }
       );
 
       const { stdout } = await execAsync(
         `${tsharkPath} -r "${tempPcap}" -T fields -e ip.src -e ip.dst`,
-        { env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` } }
+        {
+          env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` },
+          maxBuffer: 5 * 1024 * 1024 // 5MB buffer
+        }
       );
       const ips = [...new Set(stdout.split('\n').flatMap(line => line.split('\t')).filter(ip => ip && ip !== 'unknown'))];
-      console.error(`Captured ${ips.length} unique IPs: ${ips.join(', ')}`);
+      console.error(`Captured ${ips.length} unique IPs: ${ips.slice(0, 10).join(', ')}${ips.length > 10 ? '...' : ''}`);
 
       const urlhausUrl = 'https://urlhaus.abuse.ch/downloads/text/';
       console.error(`Fetching URLhaus blacklist from ${urlhausUrl}`);
@@ -229,7 +290,7 @@ server.tool(
         urlhausData = [];
       }
 
-      const outputText = `Captured IPs:\n${ips.join('\n')}\n\n` +
+      const outputText = `Filter: ${filter}\nDuration: ${duration}s\n\nCaptured IPs (${ips.length} total):\n${ips.slice(0, 50).join('\n')}${ips.length > 50 ? '\n... and ' + (ips.length - 50) + ' more' : ''}\n\n` +
         `Threat check against URLhaus blacklist:\n${
           urlhausThreats.length > 0 ? `Potential threats: ${urlhausThreats.join(', ')}` : 'No threats detected in URLhaus blacklist.'
         }`;
@@ -313,13 +374,45 @@ server.tool(
       // Check if file exists
       await fs.access(pcapPath);
 
-      // Extract broad packet data
-      const { stdout, stderr } = await execAsync(
-        `${tsharkPath} -r "${pcapPath}" -T json -e frame.number -e ip.src -e ip.dst -e tcp.srcport -e tcp.dstport -e udp.srcport -e udp.dstport -e http.host -e http.request.uri -e frame.protocols`,
-        { env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` } }
-      );
+      // Extract broad packet data with limits and better error handling
+      let stdout, stderr;
+      try {
+        const result = await execAsync(
+          `${tsharkPath} -r "${pcapPath}" -T json -c 500 -e frame.number -e ip.src -e ip.dst -e tcp.srcport -e tcp.dstport -e udp.srcport -e udp.dstport -e http.host -e http.request.uri -e frame.protocols -e quic.version`,
+          {
+            env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` },
+            maxBuffer: 20 * 1024 * 1024 // 20MB buffer
+          }
+        );
+        stdout = result.stdout;
+        stderr = result.stderr;
+      } catch (error) {
+        if (error.code === 'ENOBUFS' || error.message.includes('maxBuffer')) {
+          console.error('PCAP file too large for detailed analysis, providing summary only');
+          return {
+            content: [{
+              type: 'text',
+              text: `PCAP file ${pcapPath} is too large for detailed packet analysis.\nTry using get_summary_stats on a live capture or use a smaller PCAP file.`,
+            }],
+          };
+        }
+        throw error;
+      }
+
       if (stderr) console.error(`tshark stderr: ${stderr}`);
-      const packets = JSON.parse(stdout);
+
+      let packets;
+      try {
+        packets = JSON.parse(stdout);
+      } catch (parseError) {
+        console.error(`JSON parse failed: ${parseError.message}`);
+        return {
+          content: [{
+            type: 'text',
+            text: `PCAP analysis failed due to JSON parsing error. File may be too large or contain unsupported data.\nTry using get_summary_stats or a smaller PCAP file.`,
+          }],
+        };
+      }
 
       const ips = [...new Set(packets.flatMap(p => [
         p._source?.layers['ip.src']?.[0],
@@ -335,7 +428,7 @@ server.tool(
       const protocols = [...new Set(packets.map(p => p._source?.layers['frame.protocols']?.[0]))].filter(p => p);
       console.error(`Found protocols: ${protocols.join(', ') || 'None'}`);
 
-      const maxChars = 720000;
+      const maxChars = 500000; // Reduced from 720000
       let jsonString = JSON.stringify(packets);
       if (jsonString.length > maxChars) {
         const trimFactor = maxChars / jsonString.length;
@@ -376,16 +469,22 @@ server.tool(
   
         await fs.access(pcapPath);
   
-        // Extract plaintext credentials
+        // Extract plaintext credentials with buffer limits
         const { stdout: plaintextOut } = await execAsync(
-          `${tsharkPath} -r "${pcapPath}" -T fields -e http.authbasic -e ftp.request.command -e ftp.request.arg -e telnet.data -e frame.number`,
-          { env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` } }
+          `${tsharkPath} -r "${pcapPath}" -T fields -c 1000 -e http.authbasic -e ftp.request.command -e ftp.request.arg -e telnet.data -e frame.number`,
+          {
+            env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` },
+            maxBuffer: 10 * 1024 * 1024 // 10MB buffer
+          }
         );
 
-        // Extract Kerberos credentials
+        // Extract Kerberos credentials with buffer limits
         const { stdout: kerberosOut } = await execAsync(
-          `${tsharkPath} -r "${pcapPath}" -T fields -e kerberos.CNameString -e kerberos.realm -e kerberos.cipher -e kerberos.type -e kerberos.msg_type -e frame.number`,
-          { env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` } }
+          `${tsharkPath} -r "${pcapPath}" -T fields -c 1000 -e kerberos.CNameString -e kerberos.realm -e kerberos.cipher -e kerberos.type -e kerberos.msg_type -e frame.number`,
+          {
+            env: { ...process.env, PATH: `${process.env.PATH}:/usr/bin:/usr/local/bin:/opt/homebrew/bin` },
+            maxBuffer: 10 * 1024 * 1024 // 10MB buffer
+          }
         );
 
         const lines = plaintextOut.split('\n').filter(line => line.trim());
