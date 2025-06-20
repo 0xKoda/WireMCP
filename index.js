@@ -4,6 +4,8 @@ const { exec } = require('child_process');
 const { promisify } = require('util');
 const which = require('which');
 const fs = require('fs').promises;
+const path = require('path');
+const os = require('os');
 const execAsync = promisify(exec);
 const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
@@ -56,7 +58,7 @@ server.tool(
     try {
       const tsharkPath = await findTshark();
       const { interface, duration } = args;
-      const tempPcap = 'temp_capture.pcap';
+      const tempPcap = path.join(os.tmpdir(), `wiremcp_capture_${Date.now()}.pcap`);
       console.error(`Capturing packets on ${interface} for ${duration}s`);
 
       await execAsync(
@@ -108,7 +110,7 @@ server.tool(
     try {
       const tsharkPath = await findTshark();
       const { interface, duration } = args;
-      const tempPcap = 'temp_capture.pcap';
+      const tempPcap = path.join(os.tmpdir(), `wiremcp_summary_${Date.now()}.pcap`);
       console.error(`Capturing summary stats on ${interface} for ${duration}s`);
 
       await execAsync(
@@ -149,7 +151,7 @@ server.tool(
     try {
       const tsharkPath = await findTshark();
       const { interface, duration } = args;
-      const tempPcap = 'temp_capture.pcap';
+      const tempPcap = path.join(os.tmpdir(), `wiremcp_conversations_${Date.now()}.pcap`);
       console.error(`Capturing conversations on ${interface} for ${duration}s`);
 
       await execAsync(
@@ -190,7 +192,7 @@ server.tool(
     try {
       const tsharkPath = await findTshark();
       const { interface, duration } = args;
-      const tempPcap = 'temp_capture.pcap';
+      const tempPcap = path.join(os.tmpdir(), `wiremcp_threats_${Date.now()}.pcap`);
       console.error(`Capturing traffic on ${interface} for ${duration}s to check threats`);
 
       await execAsync(
