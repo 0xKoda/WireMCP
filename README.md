@@ -4,6 +4,7 @@
 # WireMCP
 WireMCP is a Model Context Protocol (MCP) server designed to empower Large Language Models (LLMs) with real-time network traffic analysis capabilities. By leveraging tools built on top of Wireshark's `tshark`, WireMCP captures and processes live network data, providing LLMs with structured context to assist in tasks like threat hunting, network diagnostics, and anomaly detection.
 
+
 # Features
 WireMCP exposes the following tools to MCP clients, enhancing LLM understanding of network activity:
 
@@ -24,6 +25,14 @@ WireMCP bridges the gap between raw network data and LLM comprehension by:
 - **Narrative Generation**: LLM's can Transform complex packet captures into coherent stories, making network analysis accessible to non-technical users.
 
 # Installation
+
+### Installing via Smithery
+
+To install WireMCP for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@0xKoda/WireMCP):
+
+```bash
+npx -y @smithery/cli install @0xKoda/WireMCP --client claude
+```
 
 ## Prerequisites
 - Mac / Windows / Linux
