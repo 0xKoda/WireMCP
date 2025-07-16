@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/0xkoda-wiremcp-badge.png)](https://mseep.ai/app/0xkoda-wiremcp)
+
 ![Wire-MCP Banner](Wire-MCP.png)
 
 # WireMCP
